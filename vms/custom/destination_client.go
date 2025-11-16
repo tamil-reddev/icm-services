@@ -5,6 +5,7 @@ package custom
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -16,7 +17,9 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	xsvmTx "github.com/ava-labs/avalanchego/vms/example/xsvm/tx"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -196,6 +199,17 @@ func (c *destinationClient) BlockGasLimit() uint64 {
 // GetRPCEndpointURL returns the RPC endpoint URL for this destination blockchain
 func (c *destinationClient) GetRPCEndpointURL() string {
 	return c.baseURL
+}
+
+// GetPChainHeightForDestination determines the appropriate P-Chain height for validator set selection.
+// For custom VMs, we use ProposedHeight as they typically don't have epoch-based validator set rotation.
+func (c *destinationClient) GetPChainHeightForDestination(
+	ctx context.Context,
+	network peers.AppRequestNetwork,
+) (uint64, error) {
+	c.logger.Debug("Using ProposedHeight for custom VM destination client")
+	// Custom VMs don't support epoch-based validator sets, so we always use ProposedHeight
+	return pchainapi.ProposedHeight, nil
 }
 
 // initializeSenderAddresses initializes sender addresses from private keys
