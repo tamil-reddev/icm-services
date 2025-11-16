@@ -163,6 +163,16 @@ func (s *DestinationBlockchain) initializeWarpConfigs(ctx context.Context) error
 		return nil
 	}
 
+	// For custom VMs, use default Warp configuration since they don't have EVM chain config
+	if ParseVM(s.VM) == CUSTOM {
+		s.warpConfig = WarpConfig{
+			QuorumNumerator:              warp.WarpDefaultQuorumNumerator,
+			RequirePrimaryNetworkSigners: false,
+		}
+		return nil
+	}
+
+	// For EVM chains, fetch the Warp config from the chain config
 	client, err := utils.NewEthClientWithConfig(
 		ctx,
 		s.RPCEndpoint.BaseURL,

@@ -16,6 +16,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/vms/custom"
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -60,6 +61,19 @@ type DestinationClient interface {
 	) (uint64, error)
 }
 
+func NewDestinationClient(
+	logger logging.Logger, subnetInfo *config.DestinationBlockchain,
+) (DestinationClient, error) {
+	switch config.ParseVM(subnetInfo.VM) {
+	case config.EVM:
+		return evm.NewDestinationClient(logger, subnetInfo)
+	case config.CUSTOM:
+		return custom.NewDestinationClient(logger, subnetInfo)
+	default:
+		return nil, fmt.Errorf("invalid vm: %s", subnetInfo.VM)
+	}
+}
+
 // CreateDestinationClients creates destination clients for all subnets configured as destinations
 func CreateDestinationClients(
 	logger logging.Logger,
@@ -98,7 +112,7 @@ func CreateDestinationClients(
 			continue
 		}
 
-		destinationClient, err := evm.NewDestinationClient(log, subnetInfo, epochDuration)
+		destinationClient, err := NewDestinationClient(logger, subnetInfo)
 		if err != nil {
 			log.Error("Could not create destination client", zap.Error(err))
 			return nil, err

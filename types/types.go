@@ -44,6 +44,7 @@ type WarpMessageInfo struct {
 }
 
 // Extract Warp logs from the block, if they exist
+// This function is specifically for EVM-based chains
 func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient ethclient.Client) (*WarpBlockInfo, error) {
 	var (
 		logs []types.Log
@@ -116,9 +117,11 @@ func NewWarpMessageInfo(log types.Log) (*WarpMessageInfo, error) {
 }
 
 func UnpackWarpMessage(unsignedMsgBytes []byte) (*avalancheWarp.UnsignedMessage, error) {
+	// First try to unpack as EVM warp message (from precompile logs)
 	unsignedMsg, err := warp.UnpackSendWarpEventDataToMessage(unsignedMsgBytes)
 	if err != nil {
-		// If we failed to parse the message as a log, attempt to parse it as a standalone message
+		// If we failed to parse the message as an EVM log, attempt to parse it as a standalone message
+		// This is common for custom VMs that send raw warp messages
 		var standaloneErr error
 		unsignedMsg, standaloneErr = avalancheWarp.ParseUnsignedMessage(unsignedMsgBytes)
 		if standaloneErr != nil {

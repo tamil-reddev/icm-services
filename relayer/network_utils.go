@@ -43,6 +43,17 @@ func InitializeConnectionsAndCheckStake(
 
 	eg, ectx := errgroup.WithContext(cctx)
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
+		// Skip validator connection check for Custom VMs
+		// Custom VMs use a different architecture for signature aggregation
+		if config.ParseVM(sourceBlockchain.VM) == config.CUSTOM {
+			logger.Info("Skipping validator connection check for Custom VM source blockchain",
+				zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
+				zap.String("blockchainID", sourceBlockchain.GetBlockchainID().String()),
+				zap.String("vm", sourceBlockchain.VM),
+			)
+			continue
+		}
+
 		eg.Go(func() error {
 			logger.Info("Checking sufficient stake for source blockchain",
 				zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),

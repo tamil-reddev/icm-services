@@ -53,11 +53,24 @@ func (s *SourceBlockchain) Validate(destinationBlockchainIDs *set.Set[string]) e
 		s.useAppRequestNetwork = true
 	}
 
-	// Validate the EVM settings
-	for messageContractAddress := range s.MessageContracts {
-		if !common.IsHexAddress(messageContractAddress) {
-			return fmt.Errorf("invalid message contract address in EVM source subnet: %s", messageContractAddress)
+	// Validate the VM specific settings
+	switch ParseVM(s.VM) {
+	case EVM:
+		for messageContractAddress := range s.MessageContracts {
+			if !common.IsHexAddress(messageContractAddress) {
+				return fmt.Errorf("invalid message contract address in EVM source subnet: %s", messageContractAddress)
+			}
 		}
+	case CUSTOM:
+		// For custom VMs, we validate message contract addresses as general identifiers
+		// They don't need to be hex addresses like EVM
+		for messageContractAddress := range s.MessageContracts {
+			if messageContractAddress == "" {
+				return fmt.Errorf("empty message contract address in CUSTOM source subnet")
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported VM type for source subnet: %s", s.VM)
 	}
 
 	// Validate message settings correspond to a supported message protocol

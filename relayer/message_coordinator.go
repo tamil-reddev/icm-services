@@ -58,6 +58,15 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 	messages.MessageHandler,
 	error,
 ) {
+	mc.logger.Debug(
+		"Getting app relayer message handler",
+		zap.Stringer("warpMessageID", warpMessageInfo.UnsignedMessage.ID()),
+		zap.Stringer("sourceChainID", warpMessageInfo.UnsignedMessage.SourceChainID),
+		zap.String("sourceAddress", fmt.Sprintf("0x%x", warpMessageInfo.SourceAddress)),
+		zap.String("sourceTxID", fmt.Sprintf("0x%x", warpMessageInfo.SourceTxID)),
+		zap.Int("payloadLength", len(warpMessageInfo.UnsignedMessage.Payload)),
+	)
+
 	// Check that the warp message is from a supported message protocol contract address.
 	//nolint:lll
 	messageHandlerFactory, supportedMessageProtocol := mc.messageHandlerFactories[warpMessageInfo.UnsignedMessage.SourceChainID][warpMessageInfo.SourceAddress]
@@ -70,9 +79,19 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 		)
 		return nil, nil, nil
 	}
+
+	mc.logger.Debug(
+		"Found message handler factory for source address",
+		zap.String("sourceAddress", fmt.Sprintf("0x%x", warpMessageInfo.SourceAddress)),
+	)
+
 	routeInfo, err := messageHandlerFactory.GetMessageRoutingInfo(warpMessageInfo.UnsignedMessage)
 	if err != nil {
-		mc.logger.Error("Failed to create message handler", zap.Error(err))
+		mc.logger.Error(
+			"Failed to get message routing info",
+			zap.Error(err),
+			zap.String("sourceAddress", fmt.Sprintf("0x%x", warpMessageInfo.SourceAddress)),
+		)
 		return nil, nil, err
 	}
 
@@ -82,7 +101,7 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 		routeInfo.DestinationChainID,
 		routeInfo.DestinationAddress,
 	)
-	mc.logger.Info(
+	mc.logger.Debug(
 		"Unpacked warp message",
 		zap.Stringer("sourceBlockchainID", routeInfo.SourceChainID),
 		zap.Stringer("originSenderAddress", routeInfo.SenderAddress),
@@ -230,14 +249,23 @@ func (mc *MessageCoordinator) ProcessBlock(
 	errChan chan error,
 ) {
 	mc.logger.Debug(
-		"Processing block",
+		"Message Coordinator received block for processing",
 		zap.Uint64("blockNumber", icmBlockInfo.BlockNumber),
 		zap.Stringer("blockchainID", blockchainID),
+		zap.Int("messageCount", len(icmBlockInfo.Messages)),
 	)
 
 	// Register each message in the block with the appropriate application relayer
 	messageHandlers := make(map[common.Hash][]messages.MessageHandler)
-	for _, warpLogInfo := range icmBlockInfo.Messages {
+	for i, warpLogInfo := range icmBlockInfo.Messages {
+		mc.logger.Debug(
+			"Processing warp message in Message Coordinator",
+			zap.Int("messageIndex", i),
+			zap.Stringer("warpMessageID", warpLogInfo.UnsignedMessage.ID()),
+			zap.Stringer("sourceChainID", warpLogInfo.UnsignedMessage.SourceChainID),
+			zap.String("sourceAddress", fmt.Sprintf("%x", warpLogInfo.SourceAddress)),
+		)
+
 		appRelayer, handler, err := mc.getAppRelayerMessageHandler(warpLogInfo)
 		if err != nil {
 			mc.logger.Error(
@@ -249,7 +277,7 @@ func (mc *MessageCoordinator) ProcessBlock(
 			continue
 		}
 		if appRelayer == nil {
-			mc.logger.Debug(
+			mc.logger.Warn(
 				"Application relayer not found. Skipping message relay",
 				zap.Stringer("warpMessageID", warpLogInfo.UnsignedMessage.ID()),
 				zap.Stringer("sourceBlockchainID", warpLogInfo.UnsignedMessage.SourceChainID),
@@ -258,7 +286,7 @@ func (mc *MessageCoordinator) ProcessBlock(
 			)
 			continue
 		}
-		mc.logger.Info(
+		mc.logger.Debug(
 			"Registering message handler",
 			zap.Stringer("relayerID", appRelayer.relayerID.ID),
 			zap.Stringer("warpMessageID", warpLogInfo.UnsignedMessage.ID()),

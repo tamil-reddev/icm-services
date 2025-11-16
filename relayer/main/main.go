@@ -20,6 +20,7 @@ import (
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
+	"github.com/ava-labs/icm-services/messages/raw"
 	"github.com/ava-labs/icm-services/messages/teleporter"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
@@ -268,7 +269,7 @@ func main() {
 	// to avoid trying to issue too many requests at once.
 	processMessageSemaphore := make(chan struct{}, cfg.MaxConcurrentMessages)
 
-	applicationRelayers, minHeights, err := createApplicationRelayers(
+	applicationRelayers, _, err := createApplicationRelayers(
 		context.Background(),
 		logger,
 		relayer.NewApplicationRelayerMetrics(relayerMetricsRegistry),
@@ -330,7 +331,7 @@ func main() {
 				*sourceBlockchain,
 				sourceClients[sourceBlockchain.GetBlockchainID()],
 				relayerHealth[sourceBlockchain.GetBlockchainID()],
-				minHeights[sourceBlockchain.GetBlockchainID()],
+				sourceBlockchain.ProcessHistoricalBlocksFromHeight, // minHeights[sourceBlockchain.GetBlockchainID()],
 				messageCoordinator,
 				cfg.MaxConcurrentMessages,
 			)
@@ -420,6 +421,14 @@ func createMessageHandlerFactories(
 		// Create message handler factories for each supported message protocol
 		for addressStr, cfg := range sourceBlockchain.MessageContracts {
 			address := common.HexToAddress(addressStr)
+
+			logger.Debug(
+				"Creating message handler factory",
+				zap.String("sourceBlockchainID", sourceBlockchain.BlockchainID),
+				zap.String("contractAddress", address.Hex()),
+				zap.String("messageFormat", cfg.MessageFormat),
+				zap.String("addressStr", addressStr),
+			)
 			format := cfg.MessageFormat
 			var (
 				m   messages.MessageHandlerFactory
@@ -434,6 +443,11 @@ func createMessageHandlerFactories(
 				)
 			case config.OFF_CHAIN_REGISTRY:
 				m, err = offchainregistry.NewMessageHandlerFactory(cfg)
+			case config.RAW:
+				m, err = raw.NewMessageHandlerFactory(
+					logger,
+					cfg,
+				)
 			default:
 				m, err = nil, fmt.Errorf("invalid message format %s", format)
 			}
@@ -491,13 +505,30 @@ func createApplicationRelayers(
 	applicationRelayers := make(map[common.Hash]*relayer.ApplicationRelayer)
 	minHeights := make(map[ids.ID]uint64)
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
-		logger = logger.With(
-			zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()),
-		)
-		currentHeight, err := sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
-		if err != nil {
-			logger.Error("Failed to get current block height", zap.Error(err))
-			return nil, nil, err
+		// Get current height based on VM type
+		var currentHeight uint64
+		var err error
+
+		switch config.ParseVM(sourceBlockchain.VM) {
+		case config.EVM:
+			// For EVM, use the ethclient BlockNumber method
+			currentHeight, err = sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
+			if err != nil {
+				logger.Error("Failed to get current block height", zap.Error(err))
+				return nil, nil, err
+			}
+		case config.CUSTOM:
+			// For custom VMs, we start from block 0 if ProcessMissedBlocks is enabled
+			// or we'll get the latest block from the subscriber during startup
+			// Using 0 as default since custom VM doesn't have a BlockNumber() method
+			currentHeight = 0
+			logger.Info(
+				"Custom VM detected, starting from configured height",
+				zap.String("blockchainID", sourceBlockchain.GetBlockchainID().String()),
+			)
+		default:
+			logger.Error("Unsupported VM type", zap.String("vm", sourceBlockchain.VM))
+			return nil, nil, fmt.Errorf("unsupported VM type: %s", sourceBlockchain.VM)
 		}
 
 		// Create the ApplicationRelayers

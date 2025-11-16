@@ -3,6 +3,38 @@
 
 package config
 
+// Supported VMs
+type VM int
+
+const (
+	UNKNOWN_VM VM = iota
+	EVM
+	CUSTOM
+)
+
+func (vm VM) String() string {
+	switch vm {
+	case EVM:
+		return "evm"
+	case CUSTOM:
+		return "custom"
+	default:
+		return "unknown"
+	}
+}
+
+// ParseVM returns the VM corresponding to [vm]
+func ParseVM(vm string) VM {
+	switch vm {
+	case "evm":
+		return EVM
+	case "custom":
+		return CUSTOM
+	default:
+		return UNKNOWN_VM
+	}
+}
+
 // Supported Message Protocols
 type MessageProtocol int
 
@@ -10,6 +42,7 @@ const (
 	UNKNOWN_MESSAGE_PROTOCOL MessageProtocol = iota
 	TELEPORTER
 	OFF_CHAIN_REGISTRY
+	RAW
 )
 
 func (msg MessageProtocol) String() string {
@@ -18,6 +51,8 @@ func (msg MessageProtocol) String() string {
 		return "teleporter"
 	case OFF_CHAIN_REGISTRY:
 		return "off-chain-registry"
+	case RAW:
+		return "raw"
 	default:
 		return "unknown"
 	}
@@ -30,6 +65,8 @@ func ParseMessageProtocol(msg string) MessageProtocol {
 		return TELEPORTER
 	case "off-chain-registry":
 		return OFF_CHAIN_REGISTRY
+	case "raw":
+		return RAW
 	default:
 		return UNKNOWN_MESSAGE_PROTOCOL
 	}
