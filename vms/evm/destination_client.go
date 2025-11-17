@@ -571,11 +571,11 @@ func (c *destinationClient) GetPChainHeightForDestination(
 	})
 
 	if err != nil {
-		c.logger.Error("Failed to get current epoch from destination chain ProposerVM",
+		c.logger.Warn("Failed to get current epoch from destination chain ProposerVM, falling back to ProposedHeight",
 			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
 			zap.Error(err),
 		)
-		return 0, err
+		return pchainapi.ProposedHeight, nil
 	}
 
 	epoch := result.(block.Epoch)

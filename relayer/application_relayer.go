@@ -111,6 +111,9 @@ func NewApplicationRelayer(
 			sourceBlockchain.WarpAPIEndpoint.HTTPHeaders,
 			sourceBlockchain.WarpAPIEndpoint.QueryParams,
 		)
+		logger.Debug("Initialized sourceWarpSignatureClient",
+			zap.String("baseURL", sourceBlockchain.WarpAPIEndpoint.BaseURL),
+		)
 		if err != nil {
 			logger.Error("Failed to create Warp API client", zap.Error(err))
 			return nil, err
