@@ -51,8 +51,8 @@ type CustomBlockInfo struct {
 	Messages []*CustomWarpMessage `json:"messages"`
 }
 
-// subscriber implements Subscriber for custom VMs
-type subscriber struct {
+// Subscriber implements Subscriber interface for custom VMs
+type Subscriber struct {
 	rpcClient       *http.Client
 	baseURL         string
 	blockchainID    ids.ID
@@ -69,8 +69,8 @@ func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
 	rpcBaseURL string,
-) *subscriber {
-	subscriber := &subscriber{
+) *Subscriber {
+	subscriber := &Subscriber{
 		blockchainID:    blockchainID,
 		rpcClient:       &http.Client{Timeout: utils.DefaultRPCTimeout},
 		baseURL:         rpcBaseURL,
@@ -86,7 +86,7 @@ func NewSubscriber(
 }
 
 // ProcessFromHeight processes events from {height} to the latest block for custom VM
-func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
+func (s *Subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 	defer close(done)
 	if height == nil {
 		s.logger.Error("Cannot process logs from nil height")
@@ -132,7 +132,7 @@ func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 }
 
 // Subscribe starts polling for new blocks in custom VM (no WebSocket support)
-func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
+func (s *Subscriber) Subscribe(retryTimeout time.Duration) error {
 	s.logger.Debug(
 		"Starting custom VM block polling subscription",
 		zap.String("blockchainID", s.blockchainID.String()),
@@ -144,28 +144,34 @@ func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
 }
 
 // ICMBlocks returns the channel that receives processed blocks
-func (s *subscriber) ICMBlocks() <-chan *relayerTypes.WarpBlockInfo {
+func (s *Subscriber) ICMBlocks() <-chan *relayerTypes.WarpBlockInfo {
 	return s.icmBlocks
 }
 
 // SubscribeErr returns the error channel for subscription errors
-func (s *subscriber) SubscribeErr() <-chan error {
+func (s *Subscriber) SubscribeErr() <-chan error {
 	// Custom VM doesn't have WebSocket subscriptions, so this returns a dummy channel
 	return make(<-chan error)
 }
 
 // Err returns the error channel for processing errors
-func (s *subscriber) Err() <-chan error {
+func (s *Subscriber) Err() <-chan error {
 	return s.errChan
 }
 
 // Cancel stops the polling subscription
-func (s *subscriber) Cancel() {
+func (s *Subscriber) Cancel() {
 	close(s.stopPolling)
 }
 
+// GetLatestBlockHeight returns the latest block height from the custom VM
+// This is a public wrapper around the private getLatestBlockHeight method
+func (s *Subscriber) GetLatestBlockHeight() (uint64, error) {
+	return s.getLatestBlockHeight()
+}
+
 // pollForNewBlocks continuously polls for new blocks
-func (s *subscriber) pollForNewBlocks() {
+func (s *Subscriber) pollForNewBlocks() {
 	ticker := time.NewTicker(s.pollingInterval)
 	defer ticker.Stop()
 
@@ -174,18 +180,20 @@ func (s *subscriber) pollForNewBlocks() {
 		case <-ticker.C:
 			latestHeight, err := s.getLatestBlockHeight()
 			if err != nil {
-				s.logger.Error("Failed to get latest block height", zap.Error(err))
-				s.errChan <- err
-				return
+				s.logger.Warn("Failed to get latest block height, will retry", zap.Error(err))
+				// Don't exit on error, just continue to next tick
+				// This allows the subscriber to recover when the VM comes back online
+				continue
 			}
 
 			// Process any new blocks since the last processed block
 			if latestHeight > s.latestProcessed {
 				err = s.processBlockRange(s.latestProcessed+1, latestHeight)
 				if err != nil {
-					s.logger.Error("Failed to process new blocks", zap.Error(err))
-					s.errChan <- err
-					return
+					s.logger.Warn("Failed to process new blocks, will retry", zap.Error(err))
+					// Don't exit on error, just continue to next tick
+					// This allows recovery from transient errors
+					continue
 				}
 				s.latestProcessed = latestHeight
 			}
@@ -198,7 +206,7 @@ func (s *subscriber) pollForNewBlocks() {
 }
 
 // processBlockRange processes blocks in the given range for custom VM
-func (s *subscriber) processBlockRange(fromBlock, toBlock uint64) error {
+func (s *Subscriber) processBlockRange(fromBlock, toBlock uint64) error {
 	s.logger.Debug(
 		"Processing custom VM block range",
 		zap.Uint64("fromBlockHeight", fromBlock),
@@ -271,7 +279,7 @@ func (s *subscriber) processBlockRange(fromBlock, toBlock uint64) error {
 }
 
 // getLatestBlockHeight gets the latest block height from custom VM using JSON-RPC
-func (s *subscriber) getLatestBlockHeight() (uint64, error) {
+func (s *Subscriber) getLatestBlockHeight() (uint64, error) {
 	s.logger.Debug(
 		"Calling warpcustomvm.getLatestBlock JSON-RPC method",
 		zap.String("baseURL", s.baseURL),
@@ -357,7 +365,7 @@ func (s *subscriber) getLatestBlockHeight() (uint64, error) {
 }
 
 // getBlock gets Warp messages for a specific block from custom VM
-func (s *subscriber) getBlock(blockNum uint64) (*CustomBlockInfo, error) {
+func (s *Subscriber) getBlock(blockNum uint64) (*CustomBlockInfo, error) {
 	// Try JSON-RPC first (for VMs like xsvm)
 	blockInfo, err := s.getBlockWarpMessages(blockNum)
 	if err == nil {
@@ -375,7 +383,7 @@ func (s *subscriber) getBlock(blockNum uint64) (*CustomBlockInfo, error) {
 }
 
 // getBlockWarpMessages gets block warp messages using JSON-RPC (xsvm.blockWarpMessages)
-func (s *subscriber) getBlockWarpMessages(height uint64) (*CustomBlockInfo, error) {
+func (s *Subscriber) getBlockWarpMessages(height uint64) (*CustomBlockInfo, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "warpcustomvm.getBlock",
@@ -436,7 +444,7 @@ func (s *subscriber) getBlockWarpMessages(height uint64) (*CustomBlockInfo, erro
 }
 
 // convertToWarpBlockInfo converts custom VM block info to standard WarpBlockInfo
-func (s *subscriber) convertToWarpBlockInfo(customBlock *CustomBlockInfo) (*relayerTypes.WarpBlockInfo, error) {
+func (s *Subscriber) convertToWarpBlockInfo(customBlock *CustomBlockInfo) (*relayerTypes.WarpBlockInfo, error) {
 	s.logger.Debug(
 		"Converting custom VM block to WarpBlockInfo",
 		zap.Int("messageCount", len(customBlock.Messages)),
@@ -573,7 +581,7 @@ func (s *subscriber) convertToWarpBlockInfo(customBlock *CustomBlockInfo) (*rela
 }
 
 // parseUnsignedMessage parses the base64-encoded unsigned warp message
-func (s *subscriber) parseUnsignedMessage(base64Message string) (*avalancheWarp.UnsignedMessage, error) {
+func (s *Subscriber) parseUnsignedMessage(base64Message string) (*avalancheWarp.UnsignedMessage, error) {
 	// Decode from base64 (standard encoding)
 	msgBytes, err := base64.StdEncoding.DecodeString(base64Message)
 	if err != nil {
@@ -601,7 +609,7 @@ func (s *subscriber) parseUnsignedMessage(base64Message string) (*avalancheWarp.
 
 // extractSourceAddressFromPayload extracts the source contract address from a warp message payload
 // For Teleporter messages (AddressedCall), this extracts the source address from the payload
-func (s *subscriber) extractSourceAddressFromPayload(unsignedMsg *avalancheWarp.UnsignedMessage) ([20]byte, error) {
+func (s *Subscriber) extractSourceAddressFromPayload(unsignedMsg *avalancheWarp.UnsignedMessage) ([20]byte, error) {
 	var addr [20]byte
 
 	// Try to parse as AddressedCall (used by Teleporter)
@@ -637,7 +645,7 @@ func (s *subscriber) extractSourceAddressFromPayload(unsignedMsg *avalancheWarp.
 }
 
 // parseSourceAddress converts custom VM address to common.Address
-func (s *subscriber) parseSourceAddress(address string) ([20]byte, error) {
+func (s *Subscriber) parseSourceAddress(address string) ([20]byte, error) {
 	var addr [20]byte
 
 	// For custom VMs, we'll try to convert the address to a 20-byte array
@@ -690,7 +698,7 @@ func (s *subscriber) parseSourceAddress(address string) ([20]byte, error) {
 }
 
 // parseTxID converts custom VM transaction ID to common.Hash
-func (s *subscriber) parseTxID(txID string) ([32]byte, error) {
+func (s *Subscriber) parseTxID(txID string) ([32]byte, error) {
 	var hash [32]byte
 
 	// Handle empty transaction ID
@@ -758,4 +766,58 @@ func (s *subscriber) parseTxID(txID string) ([32]byte, error) {
 	)
 	copy(hash[:], txBytes[:32])
 	return hash, nil
+}
+
+// GetLatestBlockHeight fetches the latest block height from a custom VM via JSON-RPC
+// This is a utility function that can be called from outside the package
+func GetLatestBlockHeight(baseURL string) (uint64, error) {
+	payload := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "warpcustomvm.getLatestBlock",
+		"params":  map[string]interface{}{},
+		"id":      1,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal JSON-RPC request: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Post(
+		baseURL,
+		"application/json",
+		bytes.NewBuffer(jsonData),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to call JSON-RPC: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("HTTP error %d when calling JSON-RPC", resp.StatusCode)
+	}
+
+	var result struct {
+		Result struct {
+			Height uint64 `json:"height"`
+		} `json:"result"`
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("failed to decode JSON-RPC response: %w", err)
+	}
+
+	if result.Error != nil {
+		return 0, fmt.Errorf("JSON-RPC error: %s (code: %d)", result.Error.Message, result.Error.Code)
+	}
+
+	return result.Result.Height, nil
 }

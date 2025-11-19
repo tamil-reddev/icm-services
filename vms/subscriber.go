@@ -70,6 +70,6 @@ func NewCustomSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
 	rpcURL string,
-) Subscriber {
+) *custom.Subscriber {
 	return custom.NewSubscriber(logger, blockchainID, rpcURL)
 }

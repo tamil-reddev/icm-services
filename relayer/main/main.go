@@ -269,7 +269,7 @@ func main() {
 	// to avoid trying to issue too many requests at once.
 	processMessageSemaphore := make(chan struct{}, cfg.MaxConcurrentMessages)
 
-	applicationRelayers, _, err := createApplicationRelayers(
+	applicationRelayers, minHeights, err := createApplicationRelayers(
 		context.Background(),
 		logger,
 		relayer.NewApplicationRelayerMetrics(relayerMetricsRegistry),
@@ -331,7 +331,7 @@ func main() {
 				*sourceBlockchain,
 				sourceClients[sourceBlockchain.GetBlockchainID()],
 				relayerHealth[sourceBlockchain.GetBlockchainID()],
-				sourceBlockchain.ProcessHistoricalBlocksFromHeight, // minHeights[sourceBlockchain.GetBlockchainID()],
+				minHeights[sourceBlockchain.GetBlockchainID()],
 				messageCoordinator,
 				cfg.MaxConcurrentMessages,
 			)
@@ -518,13 +518,18 @@ func createApplicationRelayers(
 				return nil, nil, err
 			}
 		case config.CUSTOM:
-			// For custom VMs, we start from block 0 if ProcessMissedBlocks is enabled
-			// or we'll get the latest block from the subscriber during startup
-			// Using 0 as default since custom VM doesn't have a BlockNumber() method
-			currentHeight = 0
+			// For custom VMs, create a temporary subscriber to fetch the latest block height
+			rpcURL := sourceBlockchain.RPCEndpoint.BaseURL
+			tempSub := vms.NewCustomSubscriber(logger, sourceBlockchain.GetBlockchainID(), rpcURL)
+			currentHeight, err = tempSub.GetLatestBlockHeight()
+			if err != nil {
+				logger.Error("Failed to get current block height for custom VM", zap.Error(err))
+				return nil, nil, err
+			}
 			logger.Info(
-				"Custom VM detected, starting from configured height",
+				"Custom VM detected, fetched latest block height",
 				zap.String("blockchainID", sourceBlockchain.GetBlockchainID().String()),
+				zap.Uint64("currentHeight", currentHeight),
 			)
 		default:
 			logger.Error("Unsupported VM type", zap.String("vm", sourceBlockchain.VM))
