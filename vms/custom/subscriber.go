@@ -382,7 +382,7 @@ func (s *Subscriber) getBlock(blockNum uint64) (*CustomBlockInfo, error) {
 	return nil, fmt.Errorf(errFetchingWarpMessageByHeight)
 }
 
-// getBlockWarpMessages gets block warp messages using JSON-RPC (xsvm.blockWarpMessages)
+// getBlockWarpMessages gets block warp messages using JSON-RPC
 func (s *Subscriber) getBlockWarpMessages(height uint64) (*CustomBlockInfo, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",

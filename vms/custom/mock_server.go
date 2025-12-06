@@ -111,8 +111,6 @@ func (m *MockCustomVMServer) handleJSONRPC(w http.ResponseWriter, r *http.Reques
 		m.handleGetLatestBlock(w, request.ID)
 	case "warpcustomvm.getBlock":
 		m.handleGetBlock(w, request.Params, request.ID)
-	case "xsvm.issueTx":
-		m.handleIssueTx(w, request.Params, request.ID)
 	default:
 		// Return JSON-RPC error for unknown method
 		response := map[string]interface{}{
@@ -177,24 +175,6 @@ func (m *MockCustomVMServer) handleGetBlock(w http.ResponseWriter, params map[st
 			"parentID":  ids.Empty,
 			"timestamp": 0,
 			"messages":  block.Messages,
-		},
-	}
-	json.NewEncoder(w).Encode(response)
-}
-
-// handleIssueTx handles xsvm.issueTx requests
-func (m *MockCustomVMServer) handleIssueTx(w http.ResponseWriter, params map[string]interface{}, id int) {
-	// Generate a mock transaction response
-	m.txCounter++
-	m.latestHeight++ // Simulate new block with this transaction
-
-	txID := ids.GenerateTestID()
-
-	response := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"result": map[string]interface{}{
-			"txID": txID,
 		},
 	}
 	json.NewEncoder(w).Encode(response)
