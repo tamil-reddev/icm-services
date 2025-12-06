@@ -1,0 +1,117 @@
+{
+  "log-level": "debug",
+  "storage-location": "/home/tamil/pocWarp/.icm-relayer-storage",
+  "redis-url": "",
+  "api-port": 0,
+  "metrics-port": 9092,
+  "db-write-interval-seconds": 10,
+ "p-chain-api": {
+    "base-url": "http://localhost:9650"
+  },
+  "info-api": {
+    "base-url": "http://localhost:9650"
+  },
+  "manually-tracked-peers": [
+    {
+      "id": "NodeID-JbWCEn5JJLazVNrGwWhGVuzDAtZwBSPEA",
+      "ip": "127.0.0.1:9651"
+    },
+    {
+      "id": "NodeID-G6aEDpPB9H6Yvnw1TxrrBfoC63q4FqxgN",
+      "ip": "127.0.0.1:9653"
+    }
+  ],
+  "source-blockchains": [
+  {
+     "subnet-id": "2U4eQ6cBdihtYCqSxaGfkJ65f6g4ScNEW5gjgHCDAqvSTMeWND",
+	 "blockchain-id": "2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ",
+      "vm": "custom",
+      "rpc-endpoint": {
+        "base-url": "http://127.0.0.1:9652/ext/bc/2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ/rpc",
+        "query-parameters": null,
+        "http-headers": null
+      },
+      "ws-endpoint": {
+        "base-url": "ws://127.0.0.1:9652/ext/bc/2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ/ws",
+        "query-parameters": null,
+        "http-headers": null
+      },
+      "message-contracts": {
+		"0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf": {
+          "message-format": "teleporter",
+          "settings": {
+            "reward-address": "0x0eBC9Aa0f45A16A9D68c10D6eE81eD3084aCeaf3"
+          }
+        }
+      },
+      "supported-destinations":  [
+        {
+          "blockchain-id": "yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp",
+          "addresses": ["0x772eb420B677F0c42Dc1aC503D03E02E92ae1502"]
+        }
+      ],
+      "process-historical-blocks-from-height": 0,
+      "allowed-origin-sender-addresses": null,
+      "warp-api-endpoint": {
+        "base-url": "",
+        "query-parameters": null,
+        "http-headers": null
+      }
+    },
+	{
+      "subnet-id": "11111111111111111111111111111111LpoYY",
+      "blockchain-id": "yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp",
+      "vm": "evm",
+      "rpc-endpoint": {
+        "base-url": "http://localhost:9650/ext/bc/C/rpc"
+      },
+      "ws-endpoint": {
+        "base-url": "ws://localhost:9650/ext/bc/C/ws"
+      },
+      "message-contracts": {
+		"0x8c1678C30474192Fc89A7A8cF28c716a11b029a7": {
+		  "message-format": "raw",
+		  "settings": {
+			"destination-blockchain-id": "2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ",
+			"destination-address": "0x1111111111111111111111111111111111111111"
+		  }
+		}
+	  }
+    }
+  ],
+  "destination-blockchains": [
+  {
+      "subnet-id": "11111111111111111111111111111111LpoYY",
+      "blockchain-id": "yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp",
+      "vm": "evm",
+      "rpc-endpoint": {
+        "base-url": "http://localhost:9650/ext/bc/C/rpc",
+        "query-parameters": null,
+        "http-headers": null
+      },
+      "kms-key-id": "",
+      "kms-aws-region": "",
+      "account-private-key": "0x4b8c6a0b7b1e574b068e26c39763335b99f01dd35199518ec245385270924a56",
+      "block-gas-limit": 0
+    },
+	{
+      "subnet-id": "2U4eQ6cBdihtYCqSxaGfkJ65f6g4ScNEW5gjgHCDAqvSTMeWND",
+	  "blockchain-id": "2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ",
+      "vm": "custom",
+      "rpc-endpoint": {
+        "base-url": "http://127.0.0.1:9650/ext/bc/2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ/rpc",
+        "query-parameters": null,
+        "http-headers": null
+      },
+      "kms-key-id": "",
+      "kms-aws-region": "",
+      "account-private-key": "0x4b8c6a0b7b1e574b068e26c39763335b99f01dd35199518ec245385270924a56",
+      "block-gas-limit": 0
+    }
+  ],
+  "process-missed-blocks": false,
+  "decider-url": "",
+  "signature-cache-size": 1048576,
+  "allow-private-ips": true,
+  "initial-connection-timeout-seconds": 60
+}
