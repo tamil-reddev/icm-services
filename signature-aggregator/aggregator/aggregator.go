@@ -715,19 +715,47 @@ func (s *SignatureAggregator) handleResponse(
 		return nil, false, nil
 	}
 	nodeID := response.NodeID()
+
+	log.Debug(
+		"Received response from validator",
+		zap.String("nodeID", nodeID.String()),
+		zap.Uint32("receivedRequestID", rcvReqID),
+		zap.Uint32("expectedRequestID", requestID),
+		zap.Stringer("messageOp", response.Op()),
+		zap.Bool("sentToNode", sentTo.Contains(nodeID)),
+	)
+
 	if !sentTo.Contains(nodeID) || rcvReqID != requestID {
-		log.Debug("Skipping irrelevant app response")
+		log.Debug(
+			"Skipping irrelevant app response",
+			zap.String("nodeID", nodeID.String()),
+			zap.Bool("sentToNode", sentTo.Contains(nodeID)),
+			zap.Bool("requestIDMatch", rcvReqID == requestID),
+		)
 		return nil, false, nil
 	}
 
 	// If we receive an AppRequestFailed, then the request timed out.
 	// This is still a relevant response, since we are no longer expecting a response from that node.
 	if response.Op() == message.AppErrorOp {
-		log.Debug("Request timed out")
+		// Extract error details from the message
+		appError, isAppError := m.(*p2p.AppError)
+		if isAppError {
+			log.Warn(
+				"Request failed with AppError",
+				zap.String("nodeID", nodeID.String()),
+				zap.Int32("errorCode", appError.ErrorCode),
+				zap.String("errorMessage", appError.ErrorMessage),
+			)
+		} else {
+			log.Debug(
+				"Request timed out",
+				zap.String("nodeID", nodeID.String()),
+			)
+		}
 		s.metrics.ValidatorTimeouts.Inc()
 		return nil, true, nil
 	}
-
 	validator, vdrIndex := connectedValidators.GetValidator(nodeID)
 	signature, valid := s.isValidSignatureResponse(log, unsignedMessage, response, validator.PublicKey)
 	// Cache any valid signature, but only include in the aggregation if the validator is not explicitly

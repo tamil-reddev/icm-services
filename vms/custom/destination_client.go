@@ -16,7 +16,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	xsvmTx "github.com/ava-labs/avalanchego/vms/example/xsvm/tx"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers"
@@ -272,15 +271,9 @@ func (c *destinationClient) sendCustomVMTransaction(txRequest CustomVMTxRequest)
 	return nil, err
 }
 
-// sendCustomVMTransactionJSONRPC sends transaction using JSON-RPC (xsvm.issueTx)
+// sendCustomVMTransactionJSONRPC sends transaction using warpcustomvm.receiveWarpMessage JSON-RPC method
 func (c *destinationClient) sendCustomVMTransactionJSONRPC(txRequest CustomVMTxRequest) (*CustomVMTxResponse, error) {
-	c.logger.Debug(
-		"Attempting JSON-RPC transaction submission",
-		zap.String("method", "xsvm.issueTx"),
-		zap.String("endpoint", c.baseURL),
-	)
-
-	// Decode the hex-encoded warp message to get the actual warp.Message
+	// Decode the hex-encoded warp message
 	warpMessageBytes := common.FromHex(txRequest.WarpMessage)
 	if len(warpMessageBytes) == 0 {
 		c.logger.Error("Warp message is empty after hex decoding")
@@ -293,80 +286,32 @@ func (c *destinationClient) sendCustomVMTransactionJSONRPC(txRequest CustomVMTxR
 		zap.String("firstBytes", fmt.Sprintf("%x", warpMessageBytes[:min(32, len(warpMessageBytes))])),
 	)
 
-	// Parse the warp message
+	// Parse the warp message for logging
 	warpMsg, err := avalancheWarp.ParseMessage(warpMessageBytes)
 	if err != nil {
 		c.logger.Error("Failed to parse warp message", zap.Error(err))
 		return nil, fmt.Errorf("failed to parse warp message: %w", err)
 	}
 
-	c.logger.Debug(
-		"Parsed warp message",
+	c.logger.Info(
+		"Sending Warp message to Custom VM",
+		zap.String("method", "warpcustomvm.receiveWarpMessage"),
+		zap.String("endpoint", c.baseURL),
 		zap.String("sourceChainID", warpMsg.SourceChainID.String()),
+		zap.String("destinationChainID", c.destinationBlockchainID.String()),
 		zap.Int("payloadLength", len(warpMsg.Payload)),
 	)
 
-	// Construct an Import transaction that wraps the signed warp message
-	// This is what xsvm expects when calling xsvm.issueTx
-	//
-	// The Import transaction structure is:
-	// - Nonce: internal chain replay protection (TODO: implement nonce management)
-	// - MaxFee: maximum fee for the transaction (TODO: make configurable)
-	// - Message: the signed warp message bytes (provides cross-chain replay protection)
-	importTx := &xsvmTx.Import{
-		Nonce:   0,       // TODO: Implement nonce management
-		MaxFee:  1000000, // TODO: Make configurable
-		Message: warpMessageBytes,
-	}
-
-	c.logger.Debug(
-		"Constructed Import transaction",
-		zap.Uint64("nonce", importTx.Nonce),
-		zap.Uint64("maxFee", importTx.MaxFee),
-		zap.Int("messageLength", len(importTx.Message)),
-		zap.String("sourceChainID", warpMsg.SourceChainID.String()),
-	)
-
-	// Wrap the Import transaction in a tx.Tx
-	tx := &xsvmTx.Tx{
-		Unsigned: importTx,
-	}
-
-	// Marshal the transaction using xsvm's codec
-	// This prepends the codec version (0) and type ID
-	txBytes, err := xsvmTx.Codec.Marshal(xsvmTx.CodecVersion, tx)
-	if err != nil {
-		c.logger.Error("Failed to marshal Import transaction", zap.Error(err))
-		return nil, fmt.Errorf("failed to marshal Import transaction: %w", err)
-	}
-
-	c.logger.Debug(
-		"Marshaled Import transaction",
-		zap.Int("txBytesLength", len(txBytes)),
-		zap.String("txBytesHex", hex.EncodeToString(txBytes[:min(64, len(txBytes))])),
-	)
-
-	// CRITICAL: xsvm expects raw bytes (not hex string) in the "tx" parameter.
-	// The Go JSON encoder will automatically base64-encode the byte array.
-	// This matches how the xsvm client works: IssueTxArgs{Tx: txBytes}
-	//
-	// We need to structure the params as a proper object with "tx" field containing bytes
-	type issueTxParams struct {
-		Tx []byte `json:"tx"`
-	}
-
+	// Construct JSON-RPC request for warpcustomvm.receiveWarpMessage
+	// This method expects the signed warp message as a hex string
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
-		"method":  "xsvm.issueTx",
-		"params":  issueTxParams{Tx: txBytes}, // Raw bytes, JSON encoder will base64 encode
-		"id":      1,
+		"method":  "warpcustomvm.receiveWarpMessage",
+		"params": map[string]interface{}{
+			"signedMessageHex": "0x" + hex.EncodeToString(warpMessageBytes),
+		},
+		"id": 1,
 	}
-
-	c.logger.Debug(
-		"JSON-RPC request payload prepared",
-		zap.Int("txBytesLength", len(txBytes)),
-		zap.String("txBytesPreview", hex.EncodeToString(txBytes[:min(32, len(txBytes))])),
-	)
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
@@ -375,9 +320,10 @@ func (c *destinationClient) sendCustomVMTransactionJSONRPC(txRequest CustomVMTxR
 	}
 
 	c.logger.Debug(
-		"Sending JSON-RPC request",
+		"Sending warpcustomvm.receiveWarpMessage request",
 		zap.String("url", c.baseURL),
 		zap.Int("payloadSize", len(jsonData)),
+		zap.Int("messageLength", len(warpMessageBytes)),
 	)
 
 	resp, err := c.client.Post(
@@ -387,7 +333,7 @@ func (c *destinationClient) sendCustomVMTransactionJSONRPC(txRequest CustomVMTxR
 	)
 	if err != nil {
 		c.logger.Error(
-			"Failed to call JSON-RPC endpoint",
+			"Failed to call Custom VM JSON-RPC endpoint",
 			zap.Error(err),
 			zap.String("url", c.baseURL),
 		)
@@ -396,14 +342,14 @@ func (c *destinationClient) sendCustomVMTransactionJSONRPC(txRequest CustomVMTxR
 	defer resp.Body.Close()
 
 	c.logger.Debug(
-		"Received JSON-RPC response",
+		"Received JSON-RPC response from Custom VM",
 		zap.Int("statusCode", resp.StatusCode),
 		zap.String("status", resp.Status),
 	)
 
 	if resp.StatusCode != http.StatusOK {
 		c.logger.Error(
-			"JSON-RPC HTTP error",
+			"Custom VM returned HTTP error",
 			zap.Int("statusCode", resp.StatusCode),
 			zap.String("status", resp.Status),
 		)
@@ -414,7 +360,8 @@ func (c *destinationClient) sendCustomVMTransactionJSONRPC(txRequest CustomVMTxR
 		JSONRPC string `json:"jsonrpc"`
 		ID      int    `json:"id"`
 		Result  struct {
-			TxID string `json:"txId"`
+			TxID    string `json:"txId"`
+			Success bool   `json:"success"`
 		} `json:"result"`
 		Error *struct {
 			Code    int         `json:"code"`
@@ -425,20 +372,20 @@ func (c *destinationClient) sendCustomVMTransactionJSONRPC(txRequest CustomVMTxR
 
 	if err := json.NewDecoder(resp.Body).Decode(&rpcResponse); err != nil {
 		c.logger.Error(
-			"Failed to decode JSON-RPC response",
+			"Failed to decode Custom VM JSON-RPC response",
 			zap.Error(err),
 		)
 		return nil, fmt.Errorf("failed to decode JSON-RPC response: %w", err)
 	}
 
 	c.logger.Debug(
-		"Decoded JSON-RPC response",
+		"Decoded Custom VM JSON-RPC response",
 		zap.Any("response", rpcResponse),
 	)
 
 	if rpcResponse.Error != nil {
 		c.logger.Error(
-			"JSON-RPC returned error",
+			"Custom VM returned JSON-RPC error",
 			zap.Int("errorCode", rpcResponse.Error.Code),
 			zap.String("errorMessage", rpcResponse.Error.Message),
 			zap.Any("errorData", rpcResponse.Error.Data),
@@ -447,21 +394,21 @@ func (c *destinationClient) sendCustomVMTransactionJSONRPC(txRequest CustomVMTxR
 	}
 
 	if rpcResponse.Result.TxID == "" {
-		c.logger.Error("JSON-RPC response missing txId in result")
+		c.logger.Error("Custom VM JSON-RPC response missing txId in result")
 		return nil, fmt.Errorf("JSON-RPC response missing txId")
 	}
 
 	c.logger.Info(
-		"Successfully submitted Import transaction to xsvm",
+		"Successfully sent Warp message to Custom VM",
 		zap.String("txID", rpcResponse.Result.TxID),
 		zap.String("sourceChainID", warpMsg.SourceChainID.String()),
 		zap.String("destinationChainID", c.destinationBlockchainID.String()),
+		zap.Bool("success", rpcResponse.Result.Success),
 	)
 
-	// Return a response with the transaction ID
 	return &CustomVMTxResponse{
 		TxID:    rpcResponse.Result.TxID,
-		Success: true,
+		Success: rpcResponse.Result.Success,
 	}, nil
 }
 
