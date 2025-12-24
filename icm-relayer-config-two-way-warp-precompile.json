@@ -74,12 +74,11 @@
         "base-url": "ws://localhost:9650/ext/bc/C/ws"
       },
       "message-contracts": {
-        "0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf": {
-          "message-format": "teleporter",
+        "0x8c1678C30474192Fc89A7A8cF28c716a11b029a7": {
+          "message-format": "raw",
           "settings": {
             "destination-blockchain-id": "2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ",
-            "destination-address": "0x1111111111111111111111111111111111111111",
-            "reward-address": "0x0eBC9Aa0f45A16A9D68c10D6eE81eD3084aCeaf3"
+            "destination-address": "0x1111111111111111111111111111111111111111"
           }
         }
       }
