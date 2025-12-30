@@ -15,9 +15,9 @@ import (
 	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
-	teleportermessenger "github.com/ava-labs/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger"
-	gasUtils "github.com/ava-labs/icm-contracts/utils/gas-utils"
-	teleporterUtils "github.com/ava-labs/icm-contracts/utils/teleporter-utils"
+	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
+	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
+	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/messages"
 	pbDecider "github.com/ava-labs/icm-services/proto/pb/decider"
 	"github.com/ava-labs/icm-services/relayer/config"
@@ -326,6 +326,7 @@ func (m *messageHandler) SendMessage(
 	}
 
 	txHash := receipt.TxHash
+	log := m.logger.With(zap.Stringer("txID", txHash))
 
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		// Check if the message has already been delivered to the destination chain
@@ -333,30 +334,23 @@ func (m *messageHandler) SendMessage(
 		if m.isEVMDestination() {
 			delivered, err := m.getTeleporterMessenger().MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
 			if err != nil {
-				m.logger.Error(
+			log.Error(
 					"Failed to check if message has been delivered to destination chain.",
 					zap.Error(err),
-					zap.Stringer("txID", txHash),
 				)
 				return common.Hash{}, fmt.Errorf("failed to check if message has been delivered: %w", err)
 			}
 			if delivered {
-				m.logger.Info("Execution reverted: message already delivered to destination.", zap.Stringer("txID", txHash))
+				log.Info("Execution reverted: message already delivered to destination.")
 				return txHash, nil
 			}
 		}
 
-		m.logger.Error(
-			"Transaction failed",
-			zap.Stringer("txID", txHash),
-		)
+		log.Error("Transaction failed")
 		return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
 	}
 
-	m.logger.Info(
-		"Delivered message to destination chain",
-		zap.Stringer("txID", txHash),
-	)
+	log.Info("Delivered message to destination chain")
 	return txHash, nil
 }
 
@@ -371,21 +365,12 @@ func (f *factory) parseTeleporterMessage(
 ) (*teleportermessenger.TeleporterMessage, error) {
 	addressedPayload, err := warpPayload.ParseAddressedCall(unsignedMessage.Payload)
 	if err != nil {
-		f.logger.Error(
-			"Failed parsing addressed payload",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed parsing addressed payload: %w", err)
 	}
 	var teleporterMessage teleportermessenger.TeleporterMessage
 	err = teleporterMessage.Unpack(addressedPayload.Payload)
 	if err != nil {
-		f.logger.Error(
-			"Failed unpacking teleporter message.",
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed unpacking teleporter message: %w", err)
 	}
 
 	return &teleporterMessage, nil
@@ -402,8 +387,7 @@ func (m *messageHandler) isEVMDestination() bool {
 // want to log and swallow the error, since operations after this will fail too.
 // This method should only be called after checking isEVMDestination() returns true.
 func (m *messageHandler) getTeleporterMessenger() *teleportermessenger.TeleporterMessenger {
-	client, ok := m.destinationClient.Client().(ethclient.Client)
-	if !ok {
+	if !isEVMDestination() {
 		panic(fmt.Sprintf(
 			"Destination client for chain %s is not an Ethereum client",
 			m.destinationClient.DestinationBlockchainID().String()),
@@ -411,7 +395,7 @@ func (m *messageHandler) getTeleporterMessenger() *teleportermessenger.Teleporte
 	}
 
 	// Get the teleporter messenger contract
-	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(m.protocolAddress, client)
+	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(m.protocolAddress, m.destinationClient.Client())
 	if err != nil {
 		panic(fmt.Sprintf("Failed to get teleporter messenger contract: %s", err.Error()))
 	}

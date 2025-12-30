@@ -14,11 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
-<<<<<<< .mine
 	"github.com/ava-labs/icm-services/peers/clients"
-=======
-	"github.com/ava-labs/icm-services/peers"
->>>>>>> .theirs
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/vms/custom"
 	"github.com/ava-labs/icm-services/vms/evm"
@@ -69,12 +65,12 @@ func NewDestinationClient(
 	logger logging.Logger, subnetInfo *config.DestinationBlockchain,
 ) (DestinationClient, error) {
 	switch config.ParseVM(subnetInfo.VM) {
-	case config.EVM:
-		return evm.NewDestinationClient(logger, subnetInfo)
-	case config.CUSTOM:
-		return custom.NewDestinationClient(logger, subnetInfo)
-	default:
-		return nil, fmt.Errorf("invalid vm: %s", subnetInfo.VM)
+		case config.EVM:
+			return evm.NewDestinationClient(logger, subnetInfo)
+		case config.CUSTOM:
+			return custom.NewDestinationClient(logger, subnetInfo)
+		default:
+			return nil, fmt.Errorf("invalid vm: %s", subnetInfo.VM)
 	}
 }
 

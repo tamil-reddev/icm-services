@@ -15,6 +15,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm"
+	"github.com/ava-labs/icm-services/vms/custom"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -109,17 +110,15 @@ func newListener(
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to node via WS: %w", err)
-			return nil, err
 		}
-		sub = vms.NewSubscriber(logger, vmType, blockchainID, ethWSClient, ethRPCClient)
+		sub := evm.NewSubscriber(logger, blockchainID, ethWSClient, ethRPCClient)
 	case config.CUSTOM:
 		// For custom VMs, use the RPC endpoint URL for HTTP polling (no WebSocket needed)
 		rpcURL := sourceBlockchain.RPCEndpoint.BaseURL
-		sub = vms.NewCustomSubscriber(logger, blockchainID, rpcURL)
+		sub = custom.NewSubscriber(logger, blockchainID, rpcURL)
 	default:
 		return nil, fmt.Errorf("unsupported VM type: %s", sourceBlockchain.VM)
 	}
-	sub := vms.NewSubscriber(logger, config.ParseVM(sourceBlockchain.VM), blockchainID, ethWSClient, ethRPCClient)
 
 	// Marks when the listener has finished the catch-up process on startup.
 	// Until that time, we do not know the order in which messages are processed,
@@ -186,12 +185,6 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 				return fmt.Errorf("failed to catch up on historical blocks")
 			}
 		case icmBlockInfo := <-lstnr.Subscriber.ICMBlocks():
-			lstnr.logger.Debug(
-				"Listener received block from subscriber",
-				zap.Uint64("blockNumber", icmBlockInfo.BlockNumber),
-				zap.Int("messageCount", len(icmBlockInfo.Messages)),
-				zap.String("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID().String()),
-			)
 			go lstnr.messageCoordinator.ProcessBlock(
 				icmBlockInfo,
 				lstnr.sourceBlockchain.GetBlockchainID(),

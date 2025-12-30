@@ -20,7 +20,6 @@ import (
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
-	"github.com/ava-labs/icm-services/messages/raw"
 	"github.com/ava-labs/icm-services/messages/teleporter"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
@@ -422,13 +421,6 @@ func createMessageHandlerFactories(
 		for addressStr, cfg := range sourceBlockchain.MessageContracts {
 			address := common.HexToAddress(addressStr)
 
-			logger.Debug(
-				"Creating message handler factory",
-				zap.String("sourceBlockchainID", sourceBlockchain.BlockchainID),
-				zap.String("contractAddress", address.Hex()),
-				zap.String("messageFormat", cfg.MessageFormat),
-				zap.String("addressStr", addressStr),
-			)
 			format := cfg.MessageFormat
 			var (
 				m   messages.MessageHandlerFactory
@@ -443,11 +435,6 @@ func createMessageHandlerFactories(
 				)
 			case config.OFF_CHAIN_REGISTRY:
 				m, err = offchainregistry.NewMessageHandlerFactory(cfg)
-			case config.RAW:
-				m, err = raw.NewMessageHandlerFactory(
-					logger,
-					cfg,
-				)
 			default:
 				m, err = nil, fmt.Errorf("invalid message format %s", format)
 			}
@@ -505,6 +492,10 @@ func createApplicationRelayers(
 	applicationRelayers := make(map[common.Hash]*relayer.ApplicationRelayer)
 	minHeights := make(map[ids.ID]uint64)
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
+		logger = logger.With(
+			zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()),
+		)
+		
 		// Get current height based on VM type
 		var currentHeight uint64
 		var err error
@@ -512,7 +503,7 @@ func createApplicationRelayers(
 		switch config.ParseVM(sourceBlockchain.VM) {
 		case config.EVM:
 			// For EVM, use the ethclient BlockNumber method
-			currentHeight, err = sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
+			currentHeight, err := sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
 			if err != nil {
 				logger.Error("Failed to get current block height", zap.Error(err))
 				return nil, nil, err

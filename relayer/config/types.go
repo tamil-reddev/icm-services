@@ -42,7 +42,6 @@ const (
 	UNKNOWN_MESSAGE_PROTOCOL MessageProtocol = iota
 	TELEPORTER
 	OFF_CHAIN_REGISTRY
-	RAW
 )
 
 func (msg MessageProtocol) String() string {
@@ -51,8 +50,6 @@ func (msg MessageProtocol) String() string {
 		return "teleporter"
 	case OFF_CHAIN_REGISTRY:
 		return "off-chain-registry"
-	case RAW:
-		return "raw"
 	default:
 		return "unknown"
 	}
@@ -65,8 +62,6 @@ func ParseMessageProtocol(msg string) MessageProtocol {
 		return TELEPORTER
 	case "off-chain-registry":
 		return OFF_CHAIN_REGISTRY
-	case "raw":
-		return RAW
 	default:
 		return UNKNOWN_MESSAGE_PROTOCOL
 	}
