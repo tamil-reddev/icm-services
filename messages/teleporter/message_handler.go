@@ -33,7 +33,6 @@ import (
 type factory struct {
 	messageConfig   *Config
 	protocolAddress common.Address
-	logger          logging.Logger
 	deciderClient   pbDecider.DeciderServiceClient
 }
 
@@ -61,18 +60,13 @@ func (s *emptyDeciderClient) ShouldSendMessage(
 }
 
 func NewMessageHandlerFactory(
-	logger logging.Logger,
 	messageProtocolAddress common.Address,
 	messageProtocolConfig config.MessageProtocolConfig,
 	deciderClientConn *grpc.ClientConn,
 ) (messages.MessageHandlerFactory, error) {
 	messageConfig, err := ConfigFromMap(messageProtocolConfig.Settings)
 	if err != nil {
-		logger.Error(
-			"Invalid Teleporter config.",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("invalid teleporter config: %w", err)
 	}
 
 	var deciderClient pbDecider.DeciderServiceClient
@@ -85,20 +79,20 @@ func NewMessageHandlerFactory(
 	return &factory{
 		messageConfig:   messageConfig,
 		protocolAddress: messageProtocolAddress,
-		logger:          logger,
 		deciderClient:   deciderClient,
 	}, nil
 }
 
 func (f *factory) NewMessageHandler(
+	logger logging.Logger,
 	unsignedMessage *warp.UnsignedMessage,
 	destinationClient vms.DestinationClient,
 ) (messages.MessageHandler, error) {
 	teleporterMessage, err := f.parseTeleporterMessage(unsignedMessage)
 	if err != nil {
-		f.logger.Error(
+		logger.Error(
 			"Failed to parse teleporter message.",
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
+			zap.Stringer("warpMessageID", unsignedMessage.ID()),
 		)
 		return nil, err
 	}
@@ -110,7 +104,7 @@ func (f *factory) NewMessageHandler(
 		teleporterMessage.MessageNonce,
 	)
 	if err != nil {
-		f.logger.Error(
+		logger.Error(
 			"Failed to calculate Teleporter message ID.",
 			zap.Stringer("warpMessageID", unsignedMessage.ID()),
 			zap.Error(err),
@@ -124,7 +118,7 @@ func (f *factory) NewMessageHandler(
 		zap.Stringer("destinationBlockchainID", destinationBlockChainID),
 	}
 	return &messageHandler{
-		logger:            f.logger.With(logFields...),
+		logger:            logger.With(logFields...),
 		teleporterMessage: teleporterMessage,
 
 		unsignedMessage:     unsignedMessage,
@@ -141,11 +135,7 @@ func (f *factory) NewMessageHandler(
 func (f *factory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (messages.MessageRoutingInfo, error) {
 	teleporterMessage, err := f.parseTeleporterMessage(unsignedMessage)
 	if err != nil {
-		f.logger.Error(
-			"Failed to parse teleporter message.",
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
-		)
-		return messages.MessageRoutingInfo{}, err
+		return messages.MessageRoutingInfo{}, fmt.Errorf("failed to parse teleporter message: %w", err)
 	}
 	return messages.MessageRoutingInfo{
 		SourceChainID:      unsignedMessage.SourceChainID,
@@ -228,7 +218,7 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 			return false, nil
 		}
 	} else {
-		m.logger.Debug("Skipping delivery check for non-EVM destination (Custom VM)")
+		m.logger.Info("Skipping delivery check for non-EVM destination (Custom VM)")
 	}
 
 	// Dispatch to the external decider service. If the service is unavailable or returns
@@ -269,21 +259,12 @@ func (m *messageHandler) getShouldSendMessageFromDecider() (bool, error) {
 	return response.ShouldSendMessage, nil
 }
 
-type isGraniteActivated struct {
-	isGraniteActivated bool
-}
 
-func (g *isGraniteActivated) IsGraniteActivated() bool {
-	return g.isGraniteActivated
-}
 
 // SendMessage extracts the gasLimit and packs the call data to call the receiveCrossChainMessage
 // method of the Teleporter contract, and dispatches transaction construction and broadcast to the
 // destination client.
-func (m *messageHandler) SendMessage(
-	signedMessage *warp.Message,
-	isGraniteActive bool,
-) (common.Hash, error) {
+func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, error) {
 	m.logger.Info("Sending message to destination chain")
 	numSigners, err := signedMessage.Signature.NumSigners()
 	if err != nil {
@@ -292,7 +273,6 @@ func (m *messageHandler) SendMessage(
 	}
 
 	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
-		&isGraniteActivated{isGraniteActivated: isGraniteActive},
 		numSigners,
 		m.teleporterMessage.RequiredGasLimit,
 		len(predicate.New(signedMessage.Bytes())),
@@ -387,7 +367,7 @@ func (m *messageHandler) isEVMDestination() bool {
 // want to log and swallow the error, since operations after this will fail too.
 // This method should only be called after checking isEVMDestination() returns true.
 func (m *messageHandler) getTeleporterMessenger() *teleportermessenger.TeleporterMessenger {
-	if !isEVMDestination() {
+	if !m.isEVMDestination() {
 		panic(fmt.Sprintf(
 			"Destination client for chain %s is not an Ethereum client",
 			m.destinationClient.DestinationBlockchainID().String()),

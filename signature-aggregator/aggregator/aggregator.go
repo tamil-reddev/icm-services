@@ -715,8 +715,6 @@ func (s *SignatureAggregator) handleResponse(
 		return nil, false, nil
 	}
 	nodeID := response.NodeID()
-
-
 	if !sentTo.Contains(nodeID) || rcvReqID != requestID {
 		log.Debug("Skipping irrelevant app response")
 		return nil, false, nil
@@ -729,6 +727,7 @@ func (s *SignatureAggregator) handleResponse(
 		s.metrics.ValidatorTimeouts.Inc()
 		return nil, true, nil
 	}
+
 	validator, vdrIndex := connectedValidators.GetValidator(nodeID)
 	signature, valid := s.isValidSignatureResponse(log, unsignedMessage, response, validator.PublicKey)
 	// Cache any valid signature, but only include in the aggregation if the validator is not explicitly
