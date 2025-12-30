@@ -131,7 +131,12 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	}
 
 	// Check if the version is already registered in the TeleporterRegistry contract.
-	registry, err := teleporterregistry.NewTeleporterRegistryCaller(m.registryAddress, m.destinationClient.Client())
+	client, ok := m.destinationClient.Client().(bind.ContractCaller)
+	if !ok {
+		m.logger.Info("Destination client does not support contract calls, skipping registry check")
+		return true, nil
+	}
+	registry, err := teleporterregistry.NewTeleporterRegistryCaller(m.registryAddress, client)
 	if err != nil {
 		m.logger.Error(
 			"Failed to create TeleporterRegistry caller",

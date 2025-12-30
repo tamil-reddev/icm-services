@@ -259,8 +259,6 @@ func (m *messageHandler) getShouldSendMessageFromDecider() (bool, error) {
 	return response.ShouldSendMessage, nil
 }
 
-
-
 // SendMessage extracts the gasLimit and packs the call data to call the receiveCrossChainMessage
 // method of the Teleporter contract, and dispatches transaction construction and broadcast to the
 // destination client.
@@ -314,7 +312,7 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 		if m.isEVMDestination() {
 			delivered, err := m.getTeleporterMessenger().MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
 			if err != nil {
-			log.Error(
+				log.Error(
 					"Failed to check if message has been delivered to destination chain.",
 					zap.Error(err),
 				)
@@ -375,7 +373,14 @@ func (m *messageHandler) getTeleporterMessenger() *teleportermessenger.Teleporte
 	}
 
 	// Get the teleporter messenger contract
-	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(m.protocolAddress, m.destinationClient.Client())
+	client, ok := m.destinationClient.Client().(bind.ContractBackend)
+	if !ok {
+		panic(fmt.Sprintf(
+			"Destination client for chain %s does not implement ContractBackend",
+			m.destinationClient.DestinationBlockchainID().String()),
+		)
+	}
+	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(m.protocolAddress, client)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to get teleporter messenger contract: %s", err.Error()))
 	}

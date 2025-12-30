@@ -20,7 +20,6 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +39,7 @@ type DestinationClient interface {
 	) (*types.Receipt, error)
 
 	// Client returns the underlying client for the destination chain
-	Client() ethclient.Client
+	Client() any
 
 	// SenderAddresses returns the addresses of the relayer on the destination chain
 	SenderAddresses() []common.Address
@@ -62,15 +61,17 @@ type DestinationClient interface {
 }
 
 func NewDestinationClient(
-	logger logging.Logger, subnetInfo *config.DestinationBlockchain,
+	logger logging.Logger,
+	subnetInfo *config.DestinationBlockchain,
+	epochDuration time.Duration,
 ) (DestinationClient, error) {
 	switch config.ParseVM(subnetInfo.VM) {
-		case config.EVM:
-			return evm.NewDestinationClient(logger, subnetInfo)
-		case config.CUSTOM:
-			return custom.NewDestinationClient(logger, subnetInfo)
-		default:
-			return nil, fmt.Errorf("invalid vm: %s", subnetInfo.VM)
+	case config.EVM:
+		return evm.NewDestinationClient(logger, subnetInfo, epochDuration)
+	case config.CUSTOM:
+		return custom.NewDestinationClient(logger, subnetInfo)
+	default:
+		return nil, fmt.Errorf("invalid vm: %s", subnetInfo.VM)
 	}
 }
 
@@ -112,7 +113,7 @@ func CreateDestinationClients(
 			continue
 		}
 
-		destinationClient, err := NewDestinationClient(logger, subnetInfo)
+		destinationClient, err := NewDestinationClient(log, subnetInfo, epochDuration)
 		if err != nil {
 			log.Error("Could not create destination client", zap.Error(err))
 			return nil, err

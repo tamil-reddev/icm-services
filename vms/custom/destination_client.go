@@ -18,7 +18,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -204,7 +203,6 @@ func (c *destinationClient) GetRPCEndpointURL() string {
 // For custom VMs, we use ProposedHeight as they typically don't have epoch-based validator set rotation.
 func (c *destinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
-	network peers.AppRequestNetwork,
 ) (uint64, error) {
 	c.logger.Debug("Using ProposedHeight for custom VM destination client")
 	// Custom VMs don't support epoch-based validator sets, so we always use ProposedHeight

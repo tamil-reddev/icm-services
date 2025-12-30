@@ -36,6 +36,7 @@ import (
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"go.uber.org/atomic"
+
 	// Sets GOMAXPROCS to the CPU quota for containerized environments
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/zap"
@@ -495,7 +496,7 @@ func createApplicationRelayers(
 		logger = logger.With(
 			zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()),
 		)
-		
+
 		// Get current height based on VM type
 		var currentHeight uint64
 		var err error
@@ -503,7 +504,7 @@ func createApplicationRelayers(
 		switch config.ParseVM(sourceBlockchain.VM) {
 		case config.EVM:
 			// For EVM, use the ethclient BlockNumber method
-			currentHeight, err := sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
+			_, err := sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
 			if err != nil {
 				logger.Error("Failed to get current block height", zap.Error(err))
 				return nil, nil, err

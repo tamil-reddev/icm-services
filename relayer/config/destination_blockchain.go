@@ -30,6 +30,7 @@ type KMSKey struct {
 // Destination blockchain configuration. Specifies how to connect to and issue
 // transactions on the destination blockchain.
 type DestinationBlockchain struct {
+	VM                         string            `mapstructure:"vm" json:"vm"`
 	SubnetID                   string            `mapstructure:"subnet-id" json:"subnet-id"`
 	BlockchainID               string            `mapstructure:"blockchain-id" json:"blockchain-id"`
 	RPCEndpoint                basecfg.APIConfig `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
