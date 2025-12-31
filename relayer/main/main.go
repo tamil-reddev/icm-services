@@ -504,7 +504,7 @@ func createApplicationRelayers(
 		switch config.ParseVM(sourceBlockchain.VM) {
 		case config.EVM:
 			// For EVM, use the ethclient BlockNumber method
-			_, err := sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
+			currentHeight, err = sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
 			if err != nil {
 				logger.Error("Failed to get current block height", zap.Error(err))
 				return nil, nil, err
