@@ -30,6 +30,7 @@ type KMSKey struct {
 // Destination blockchain configuration. Specifies how to connect to and issue
 // transactions on the destination blockchain.
 type DestinationBlockchain struct {
+	VM                         string            `mapstructure:"vm" json:"vm"`
 	SubnetID                   string            `mapstructure:"subnet-id" json:"subnet-id"`
 	BlockchainID               string            `mapstructure:"blockchain-id" json:"blockchain-id"`
 	RPCEndpoint                basecfg.APIConfig `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
@@ -163,6 +164,16 @@ func (s *DestinationBlockchain) initializeWarpConfigs(ctx context.Context) error
 		return nil
 	}
 
+	// For custom VMs, use default Warp configuration since they don't have EVM chain config
+	if ParseVM(s.VM) == CUSTOM {
+		s.warpConfig = WarpConfig{
+			QuorumNumerator:              warp.WarpDefaultQuorumNumerator,
+			RequirePrimaryNetworkSigners: false,
+		}
+		return nil
+	}
+
+	// For EVM chains, fetch the Warp config from the chain config
 	client, err := utils.NewEthClientWithConfig(
 		ctx,
 		s.RPCEndpoint.BaseURL,

@@ -25,6 +25,7 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
+	"github.com/ava-labs/subnet-evm/ethclient"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -201,18 +202,23 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	}
 
 	// Check if the message has already been delivered to the destination chain
-	teleporterMessenger := m.getTeleporterMessenger()
-	delivered, err := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
-	if err != nil {
-		m.logger.Error(
-			"Failed to check if message has been delivered to destination chain.",
-			zap.Error(err),
-		)
-		return false, err
-	}
-	if delivered {
-		m.logger.Info("Message already delivered to destination.")
-		return false, nil
+	// This check only applies to EVM destinations that support Teleporter contract calls
+	if m.isEVMDestination() {
+		teleporterMessenger := m.getTeleporterMessenger()
+		delivered, err := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
+		if err != nil {
+			m.logger.Error(
+				"Failed to check if message has been delivered to destination chain.",
+				zap.Error(err),
+			)
+			return false, err
+		}
+		if delivered {
+			m.logger.Info("Message already delivered to destination.")
+			return false, nil
+		}
+	} else {
+		m.logger.Info("Skipping delivery check for non-EVM destination (Custom VM)")
 	}
 
 	// Dispatch to the external decider service. If the service is unavailable or returns
@@ -302,17 +308,20 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		// Check if the message has already been delivered to the destination chain
-		delivered, err := m.getTeleporterMessenger().MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
-		if err != nil {
-			log.Error(
-				"Failed to check if message has been delivered to destination chain.",
-				zap.Error(err),
-			)
-			return common.Hash{}, fmt.Errorf("failed to check if message has been delivered: %w", err)
-		}
-		if delivered {
-			log.Info("Execution reverted: message already delivered to destination.")
-			return txHash, nil
+		// This check only applies to EVM destinations
+		if m.isEVMDestination() {
+			delivered, err := m.getTeleporterMessenger().MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
+			if err != nil {
+				log.Error(
+					"Failed to check if message has been delivered to destination chain.",
+					zap.Error(err),
+				)
+				return common.Hash{}, fmt.Errorf("failed to check if message has been delivered: %w", err)
+			}
+			if delivered {
+				log.Info("Execution reverted: message already delivered to destination.")
+				return txHash, nil
+			}
 		}
 
 		log.Error("Transaction failed")
@@ -345,12 +354,33 @@ func (f *factory) parseTeleporterMessage(
 	return &teleporterMessage, nil
 }
 
+// isEVMDestination checks if the destination client is an EVM client
+func (m *messageHandler) isEVMDestination() bool {
+	_, ok := m.destinationClient.Client().(ethclient.Client)
+	return ok
+}
+
 // getTeleporterMessenger returns the Teleporter messenger instance for the destination chain.
 // Panic instead of returning errors because this should never happen, and if it does, we do not
 // want to log and swallow the error, since operations after this will fail too.
+// This method should only be called after checking isEVMDestination() returns true.
 func (m *messageHandler) getTeleporterMessenger() *teleportermessenger.TeleporterMessenger {
+	if !m.isEVMDestination() {
+		panic(fmt.Sprintf(
+			"Destination client for chain %s is not an Ethereum client",
+			m.destinationClient.DestinationBlockchainID().String()),
+		)
+	}
+
 	// Get the teleporter messenger contract
-	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(m.protocolAddress, m.destinationClient.Client())
+	client, ok := m.destinationClient.Client().(bind.ContractBackend)
+	if !ok {
+		panic(fmt.Sprintf(
+			"Destination client for chain %s does not implement ContractBackend",
+			m.destinationClient.DestinationBlockchainID().String()),
+		)
+	}
+	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(m.protocolAddress, client)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to get teleporter messenger contract: %s", err.Error()))
 	}

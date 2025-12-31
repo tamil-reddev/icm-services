@@ -36,6 +36,7 @@ import (
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"go.uber.org/atomic"
+
 	// Sets GOMAXPROCS to the CPU quota for containerized environments
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/zap"
@@ -420,6 +421,7 @@ func createMessageHandlerFactories(
 		// Create message handler factories for each supported message protocol
 		for addressStr, cfg := range sourceBlockchain.MessageContracts {
 			address := common.HexToAddress(addressStr)
+
 			format := cfg.MessageFormat
 			var (
 				m   messages.MessageHandlerFactory
@@ -494,10 +496,36 @@ func createApplicationRelayers(
 		logger = logger.With(
 			zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()),
 		)
-		currentHeight, err := sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
-		if err != nil {
-			logger.Error("Failed to get current block height", zap.Error(err))
-			return nil, nil, err
+
+		// Get current height based on VM type
+		var currentHeight uint64
+		var err error
+
+		switch config.ParseVM(sourceBlockchain.VM) {
+		case config.EVM:
+			// For EVM, use the ethclient BlockNumber method
+			currentHeight, err = sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
+			if err != nil {
+				logger.Error("Failed to get current block height", zap.Error(err))
+				return nil, nil, err
+			}
+		case config.CUSTOM:
+			// For custom VMs, create a temporary subscriber to fetch the latest block height
+			rpcURL := sourceBlockchain.RPCEndpoint.BaseURL
+			tempSub := vms.NewCustomSubscriber(logger, sourceBlockchain.GetBlockchainID(), rpcURL)
+			currentHeight, err = tempSub.GetLatestBlockHeight()
+			if err != nil {
+				logger.Error("Failed to get current block height for custom VM", zap.Error(err))
+				return nil, nil, err
+			}
+			logger.Info(
+				"Custom VM detected, fetched latest block height",
+				zap.String("blockchainID", sourceBlockchain.GetBlockchainID().String()),
+				zap.Uint64("currentHeight", currentHeight),
+			)
+		default:
+			logger.Error("Unsupported VM type", zap.String("vm", sourceBlockchain.VM))
+			return nil, nil, fmt.Errorf("unsupported VM type: %s", sourceBlockchain.VM)
 		}
 
 		// Create the ApplicationRelayers

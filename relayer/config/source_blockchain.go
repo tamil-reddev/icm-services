@@ -16,6 +16,7 @@ import (
 // Specifies the supported source addresses, and destination blockchains and addresses.
 // Specifies the height from which to start processing historical blocks.
 type SourceBlockchain struct {
+	VM                                string                           `mapstructure:"vm" json:"vm"`
 	SubnetID                          string                           `mapstructure:"subnet-id" json:"subnet-id"`
 	BlockchainID                      string                           `mapstructure:"blockchain-id" json:"blockchain-id"`                                                 //nolint:lll
 	RPCEndpoint                       basecfg.APIConfig                `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`                                                   //nolint:lll
@@ -53,11 +54,24 @@ func (s *SourceBlockchain) Validate(destinationBlockchainIDs *set.Set[string]) e
 		s.useAppRequestNetwork = true
 	}
 
-	// Validate the EVM settings
-	for messageContractAddress := range s.MessageContracts {
-		if !common.IsHexAddress(messageContractAddress) {
-			return fmt.Errorf("invalid message contract address in EVM source subnet: %s", messageContractAddress)
+	// Validate the VM specific settings
+	switch ParseVM(s.VM) {
+	case EVM:
+		for messageContractAddress := range s.MessageContracts {
+			if !common.IsHexAddress(messageContractAddress) {
+				return fmt.Errorf("invalid message contract address in EVM source subnet: %s", messageContractAddress)
+			}
 		}
+	case CUSTOM:
+		// For custom VMs, we validate message contract addresses as general identifiers
+		// They don't need to be hex addresses like EVM
+		for messageContractAddress := range s.MessageContracts {
+			if messageContractAddress == "" {
+				return fmt.Errorf("empty message contract address in CUSTOM source blockchain")
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported VM type for source blockchain: %s", s.VM)
 	}
 
 	// Validate message settings correspond to a supported message protocol
